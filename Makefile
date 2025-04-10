@@ -7,9 +7,9 @@ clean:
 
 clean-build: 
 	rm -rf build
-	make build-all
+	make build
 
-build-all: 
+build: 
 	mkdir -p build
 	cd build && cmake ..
 	cd build && cmake --build . 
