@@ -8,6 +8,8 @@ out/
 
 # IDE specific files
 .vscode/
+!.vscode/launch.json
+!.vscode/tasks.json
 .vs/
 *.swp
 *.swo
