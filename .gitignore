@@ -1,3 +1,6 @@
+test_store.yaml
+graph_store.yaml
+
 # Build directories
 build/
 _build/
