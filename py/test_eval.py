@@ -1,4 +1,5 @@
-from typing import Any, List, Tuple, Dict, Optional, Union, Self
+from hmac import new
+from typing import Any, List, Tuple, Dict, Optional, Union, Self, final
 import unittest
 from pprint import pprint
 
@@ -32,7 +33,11 @@ class FNode:
         return True
 
     def __repr__(self) -> str:
-        return f"FNode({self.edges}, name={self.name})"
+        if self.name:
+            return f"{self.name}"
+        else:
+        
+            return f"{{{self.edges}}}"
 
 
 
@@ -66,22 +71,26 @@ class FExpr:
         return equal
 
     def __repr__(self) -> str:
-        return f"FExpr({self.left}, {self.right})"
+        return f"[{self.left}> <{self.right}]"
 
 
 def rewrite_node(node: FNode) -> FNode:
     new_edges = []
     is_same = True
     for i, edge in enumerate(node.edges):
+        if not isinstance(edge, FExpr):
+            print(node.edges)
+            raise ValueError(f"Invalid argument: {edge}")
         res: List[FExpr] = rewrite_edge(edge)
-        if len(res) != 1 or res != edge:
+        if len(res) != 1 or res[0] != edge:
             is_same = False
-            new_edges.append(res)
+            new_edges.extend(res)
     if is_same:
         return node
     else:
         new_node = FNode(new_edges, name=node.name)
-        return new_node
+        final_node = rewrite_node(new_node)
+        return final_node
         
 
 Z: FNode = FNode([], name = "Z")
@@ -94,15 +103,21 @@ NAMED_EXPRS = {
 
 # Rewrite rules
 def rewrite_edge(edge: FExpr) -> List[FExpr]:
+    if not isinstance(edge, FExpr):
+        raise ValueError(f"Invalid argument: {edge}")
     if edge.left == Z:
         return [edge]
     if edge.right == Z:
         return edge.left.edges
     new_edges = []
     for l_edge in edge.left.edges:
+        if l_edge.right == edge.right: 
+            new_edges.append(FExpr(l_edge.left, Z))
         for r_edge in edge.right.edges:
             if match_node(l_edge.right, r_edge.left):
                 new_edges.append(FExpr(l_edge.left, r_edge.right))
+            
+
     return new_edges
 
 
@@ -214,19 +229,19 @@ class TestRewriteSystem(unittest.TestCase):
          # CF = FNode([FExpr(Z, U)], name="CF")
 
         """
-        constant_false = FNode([FExpr(Z, U)], name="CF")
+        constant_false = FNode([FExpr(Z, U)])
         """
         # [FExpr(ID, Z_Z)] => [FExpr(Z, Z)], # [FExpr(ID, Z_U)] => [FExpr(Z, U)]
+
         # ID = FNode([FExpr(Z, Z)], name="ID")
         """
-        id_fn = FNode([FExpr(Z, Z)], name="ID")
+        id_fn = FNode([FExpr(Z, Z)])
         """
-        # ADD [Z, Z] => [Z, U]
-        # ADD [Z, U] => [Z, Z]
-        [U, Z] [Z, U] = > [U, U] => [Z, Z]
-        [U, Z] [Z, Z] => [U, Z] => [Z, Z]
+        # AND [Z, Z] => [Z, U]
+        # AND [Z, U] => [Z, Z]
+
         [[Z, U], Z] [Z, Z] => [Z, U] [Z] => [Z, U]
-        [[Z, U], Z] [Z, U] => [Z, U] [U] => [Z, Z]
+        [[Z, U], Z] [Z, [[Z, Z]]] => [Z, [[Z, Z]]] [[Z, Z]] => Z
         """
         
         A = FNode([FExpr(
@@ -234,11 +249,13 @@ class TestRewriteSystem(unittest.TestCase):
             Z
         )], name="AND")
         and_res_1 = rewrite_edge(FExpr(A, false_val))
-        print(and_res_1)
-        print(constant_false)
-        assert and_res_1 == constant_false
+        and_res_1a = rewrite_node(FNode(and_res_1))
+        assert and_res_1a == constant_false
         and_res_2 = rewrite_edge(FExpr(A, true_val))
-        assert and_res_2 == id_fn
+        and_res_2a = rewrite_node(FNode(and_res_2))
+        print(and_res_2a)
+        print(id_fn)
+        assert and_res_2a == id_fn
 
     def test_boolean_or(self):
         raise Exception("Not implemented")
@@ -276,5 +293,5 @@ class TestRewriteSystem(unittest.TestCase):
         results = run_behavior_matrix()
         self.assertIsInstance(results, list)
         self.assertGreater(len(results), 0)
-        pprint(results[:5])  # Show only the first few for brevity
+        # pprint(results[:5])  # Show only the first few for brevity
 
