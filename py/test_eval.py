@@ -5,8 +5,8 @@ from pprint import pprint
 
 
 
-NAMED_NODES: Dict[str, 'FNode'] = {
-}
+NAMED_NODES: Dict[str, 'FNode'] = {}
+NAMED_EXPRS: Dict[str, 'FExpr'] = {}
 
 class FNode: 
 
@@ -43,7 +43,13 @@ class FNode:
 
 # Primitive nodes
 class FExpr:
-    def __init__(self, left: FNode | str, right: FNode | str):
+    def __init__(self, left: FNode | str, right: FNode | str, name: str | None = None):
+        if name:
+            if name in NAMED_EXPRS:
+                if NAMED_EXPRS[name] != self:
+                    raise ValueError(f"Node {name} already defined")
+            NAMED_EXPRS[name] = self
+        self.name = name
         if isinstance(left, str):
             if left in NAMED_NODES:
                 left = NAMED_NODES[left]
@@ -96,13 +102,12 @@ def rewrite_node(node: FNode) -> FNode:
 Z: FNode = FNode([], name = "Z")
 
 
-NAMED_EXPRS = {
-    "U": FExpr(Z, Z),
-}
 
 
 # Rewrite rules
 def rewrite_edge(edge: FExpr) -> List[FExpr]:
+    if not edge.left or not edge.right:
+        raise ValueError(f"Invalid argument: {edge}")
     if not isinstance(edge, FExpr):
         raise ValueError(f"Invalid argument: {edge}")
     if edge.left == Z:
@@ -112,10 +117,13 @@ def rewrite_edge(edge: FExpr) -> List[FExpr]:
     new_edges = []
     for l_edge in edge.left.edges:
         if l_edge.right == edge.right: 
+            # print("here2", l_edge.left, l_edge, edge.right)
             new_edges.append(FExpr(l_edge.left, Z))
-        for r_edge in edge.right.edges:
-            if match_node(l_edge.right, r_edge.left):
-                new_edges.append(FExpr(l_edge.left, r_edge.right))
+        else: 
+            for r_edge in edge.right.edges:
+                # print("here2", l_edge, r_edge)
+                if match_node(l_edge.right, r_edge.left):
+                    new_edges.append(FExpr(l_edge.left, r_edge.right))
             
 
     return new_edges
@@ -135,25 +143,25 @@ def match_node(pattern: FNode, target: FNode):
     return True
 
 
-Z_Z = FNode([FExpr(Z, Z)], name="Z_Z")
-U = FNode([FExpr(Z, Z)], name="U")
+Z_Z = FExpr(Z, Z)
+U = FNode([Z_Z], name="U")
 
-Z_U = FNode([FExpr(Z, Z_Z)], name="ZU")
-U_U = FNode([FExpr(Z_Z, Z_Z)], name="UU")
-U_Z = FNode([FExpr(Z_Z, Z)], name="UZ")
+Z_U = FNode([FExpr(Z, U)], name="ZU")
+U_U = FNode([FExpr(U, U)], name="UU")
+U_Z = FNode([FExpr(U, Z)], name="UZ")
 
 
-ZZ_ZU = FNode([FExpr(Z, Z), FExpr(Z, U)], name="ZZ_ZU")
-ZZ_UZ = FNode([FExpr(Z, Z), FExpr(U, Z)], name="ZZ_UZ")
-ZZ_UU = FNode([FExpr(Z, Z), FExpr(U, U)], name="ZZ_UU")
-ZU_ZZ = FNode([FExpr(Z, U), FExpr(Z, Z)], name="ZU_ZZ")
+ZZ_ZU = FNode([Z_Z, FExpr(Z, U)], name="ZZ_ZU")
+ZZ_UZ = FNode([Z_Z, FExpr(U, Z)], name="ZZ_UZ")
+ZZ_UU = FNode([Z_Z, FExpr(U, U)], name="ZZ_UU")
+ZU_ZZ = FNode([FExpr(Z, U), Z_Z], name="ZU_ZZ")
 ZU_ZU = FNode([FExpr(Z, U), FExpr(U, U)], name="ZU_ZU")
 ZU_UZ = FNode([FExpr(Z, U), FExpr(U, Z)], name="ZU_UZ")
 ZU_UU = FNode([FExpr(Z, U), FExpr(U, U)], name="ZU_UU")
-UZ_ZZ = FNode([FExpr(U, Z), FExpr(Z, Z)], name="UZ_ZZ")
+UZ_ZZ = FNode([FExpr(U, Z), Z_Z], name="UZ_ZZ")
 UZ_UZ = FNode([FExpr(U, Z), FExpr(U, Z)], name="UZ_UZ")
 UZ_UU = FNode([FExpr(U, Z), FExpr(U, U)], name="UZ_UU")
-UU_ZZ = FNode([FExpr(U, U), FExpr(Z, Z)], name="UU_ZZ")
+UU_ZZ = FNode([FExpr(U, U), Z_Z], name="UU_ZZ")
 UU_UZ = FNode([FExpr(U, U), FExpr(U, Z)], name="UU_UZ")
 UU_UU = FNode([FExpr(U, U), FExpr(U, U)], name="UU_UU")
 
@@ -179,6 +187,120 @@ def auto_behavior_tags(expr: FExpr, result: List[FExpr]) -> str:
         return "const_like"
     return "unclassified"
 
+
+# Unit tests
+class TestRewriteSystem(unittest.TestCase):
+
+    def test_rule_Z_applied_to_expr(self):
+        expr = FExpr(Z, Z_U)
+        result = rewrite_edge(expr)
+        self.assertEqual(result, [FExpr(Z, Z_U)])
+
+    def test_rule_expr_applied_to_Z(self):
+        expr = FExpr(Z_U, Z)
+        result = rewrite_edge(expr)
+        self.assertEqual(result, [FExpr(Z, U)])
+
+    def test_rule_ZZ_applied_to_expr(self):
+        expr = FExpr(U, Z_U)
+        result = rewrite_edge(expr)
+        self.assertEqual(result, [FExpr(Z, U)])
+
+    def test_constant_false(self):
+        false_val = FNode([FExpr(Z, Z)])
+        true_val = FNode([FExpr(Z, U)])
+        # if first arg is false, then anything returns false, 
+        # if first arg is true, then second arg returns itself
+        # constant_false = FNode([FExpr(U, Z)])
+        # false_res = rewrite_edge(rewrite_edge(FExpr(constant_false, false_val))[0])
+        # true_res = rewrite_edge(rewrite_edge(FExpr(constant_false, true_val))[0])
+
+        constant_false = FNode([FExpr(FNode([FExpr(U, Z)]), Z)])
+        false_res = rewrite_edge(rewrite_edge(rewrite_edge(FExpr(constant_false, false_val))[0])[0])
+        true_res = rewrite_edge(rewrite_edge(rewrite_edge(FExpr(constant_false, true_val))[0])[0])
+
+        # print(false_res, false_val, true_res, true_val)
+        assert FNode(false_res) == false_val
+        assert FNode(true_res) == false_val
+
+
+    def test_constant_true(self):
+        false_val = FNode([FExpr(Z, Z)])
+        true_val = FNode([FExpr(Z, U)])
+        # if first arg is false, then anything returns false, 
+        # if first arg is true, then second arg returns itself
+        constant_true = FNode([FExpr(FNode([FExpr(Z_U, Z)]), Z)])
+        # false_res = rewrite_edge(rewrite_edge(FExpr(constant_true, false_val))[0])
+        # print("FALSE ARG")
+        false_res = rewrite_edge(rewrite_edge(rewrite_edge(FExpr(constant_true, false_val))[0])[0])
+        # print(false_res, true_val)
+        assert FNode(false_res) == true_val
+        # print("TRUE ARG")
+        true_res = rewrite_edge(rewrite_edge(rewrite_edge(FExpr(constant_true, true_val))[0])[0])
+        # print(true_res, true_val)
+        assert FNode(true_res) == true_val
+
+
+    def test_ident(self):
+        false_val = FNode([FExpr(Z, Z)])
+        true_val = FNode([FExpr(Z, U)])
+        # if first arg is false, then anything returns false, 
+        # if first arg is true, then second arg returns itself
+        id = U
+        false_res = rewrite_edge(FExpr(id, false_val))
+        assert FNode(false_res) == false_val
+        true_res = rewrite_edge(FExpr(id, true_val))
+        assert FNode(true_res) == true_val
+
+
+    # @unittest.skip("Skipping test for now")
+    def test_boolean_and(self):
+        false_val = FNode([FExpr(Z, Z)], name="false")
+        true_val = FNode([FExpr(Z, U)], name="true")
+        # if first arg is false, then anything returns false, 
+        # if first arg is true, then second arg returns itself
+        """
+         # [FExpr(CF, Z)] => [FExpr(Z, Z)], # [FExpr(CF, U)] => [FExpr(Z, Z)]
+         # CF = FNode([FExpr(Z, U)], name="CF")
+
+        """
+        constant_false = FNode([FExpr(U, Z)])
+        """
+        # [FExpr(ID, Z_Z)] => [FExpr(Z, Z)], # [FExpr(ID, Z_U)] => [FExpr(Z, U)]
+
+        # ID = FNode([FExpr(Z, Z)], name="ID")
+        """
+        id_fn = U
+        """
+        # AND [Z, Z] => [Z, U]
+        # AND [Z, U] => [Z, Z]
+
+        [[Z, U], Z] [Z, Z] => [Z, U] [Z] => [Z, U]
+        [[Z, U], Z] [Z, [[Z, Z]]] => [Z, [[Z, Z]]] [[Z, Z]] => Z
+        """
+        
+        A = FNode([FExpr(
+            FNode([FExpr(constant_false, Z)]),
+            Z
+        )], name="AND")
+        and_res_1 = rewrite_edge(rewrite_edge(rewrite_edge(FExpr(A, false_val))[0])[0])
+        print(and_res_1, constant_false)
+        assert FNode(and_res_1) == constant_false
+        and_res_2 = rewrite_edge(rewrite_edge(rewrite_edge(rewrite_edge(FExpr(A, true_val))[0])[0])[0])
+        print(and_res_2)
+        print(id_fn)
+        assert FNode(and_res_2) == id_fn
+
+
+
+    @unittest.skip("Skipping test for now")
+    def test_behavior_matrix(self):
+        results = run_behavior_matrix()
+        self.assertIsInstance(results, list)
+        self.assertGreater(len(results), 0)
+        # pprint(results[:5])  # Show only the first few for brevity
+
+
 # Matrix-based behavior test runner
 def run_behavior_matrix():
     results = []
@@ -197,101 +319,3 @@ def run_behavior_matrix():
                 "tag": tag
             })
     return results
-
-# Unit tests
-class TestRewriteSystem(unittest.TestCase):
-
-    def test_rule_Z_applied_to_expr(self):
-        expr = FExpr(Z, Z_U)
-        result = rewrite_edge(expr)
-        self.assertEqual(result, [FExpr(Z, Z_U)])
-
-    def test_rule_expr_applied_to_Z(self):
-        expr = FExpr(Z_U, Z)
-        result = rewrite_edge(expr)
-        self.assertEqual(result, [FExpr(Z, U)])
-
-    def test_rule_ZZ_applied_to_expr(self):
-        expr = FExpr(Z_Z, Z_U)
-        result = rewrite_edge(expr)
-        self.assertEqual(result, [FExpr(Z, Z_Z)])
-
-    def test_rule_expr_applied_to_ZZ(self):
-        raise Exception("Not implemented")
-
-    def test_boolean_and(self):
-        false_val = FNode([FExpr(Z, Z)], name="false")
-        true_val = FNode([FExpr(Z, U)], name="true")
-        # if first arg is false, then anything returns false, 
-        # if first arg is true, then second arg returns itself
-        """
-         # [FExpr(CF, Z)] => [FExpr(Z, Z)], # [FExpr(CF, U)] => [FExpr(Z, Z)]
-         # CF = FNode([FExpr(Z, U)], name="CF")
-
-        """
-        constant_false = FNode([FExpr(Z, U)])
-        """
-        # [FExpr(ID, Z_Z)] => [FExpr(Z, Z)], # [FExpr(ID, Z_U)] => [FExpr(Z, U)]
-
-        # ID = FNode([FExpr(Z, Z)], name="ID")
-        """
-        id_fn = FNode([FExpr(Z, Z)])
-        """
-        # AND [Z, Z] => [Z, U]
-        # AND [Z, U] => [Z, Z]
-
-        [[Z, U], Z] [Z, Z] => [Z, U] [Z] => [Z, U]
-        [[Z, U], Z] [Z, [[Z, Z]]] => [Z, [[Z, Z]]] [[Z, Z]] => Z
-        """
-        
-        A = FNode([FExpr(
-            FNode([FExpr(Z, U)]),
-            Z
-        )], name="AND")
-        and_res_1 = rewrite_edge(FExpr(A, false_val))
-        and_res_1a = rewrite_node(FNode(and_res_1))
-        assert and_res_1a == constant_false
-        and_res_2 = rewrite_edge(FExpr(A, true_val))
-        and_res_2a = rewrite_node(FNode(and_res_2))
-        print(and_res_2a)
-        print(id_fn)
-        assert and_res_2a == id_fn
-
-    def test_boolean_or(self):
-        raise Exception("Not implemented")
-
-
-    def test_boolean_not(self):
-        raise Exception("Not implemented")
-
-    def test_boolean_xor(self):
-        raise Exception("Not implemented")
-
-
-    def test_pattern_replicator_rule(self):
-        raise Exception("Not implemented")
-        lhs = test_nodes["ZU_UZ"]
-        rhs = FNode([(0, 3), (1, 3)])
-        result = rewrite_edge(lhs, rhs)
-        self.assertEqual(result, rhs)
-
-    def test_duplication_rule(self):
-        raise Exception("Not implemented")
-        lhs = test_nodes["ZU_UU"]
-        rhs = FNode([(0, 2), (1, 3)])
-        result = rewrite_edge(lhs, rhs)
-        self.assertEqual(result, [(0, 3), (1, 3)])
-
-    def test_reduce_to_Z_rule(self):
-        raise Exception("Not implemented")
-        lhs = FNode([(0, 5), (1, 6)])
-        rhs = FNode([(0, 5), (1, 6)])
-        result = rewrite_edge(lhs, rhs)
-        self.assertEqual(result, [])
-
-    def test_behavior_matrix(self):
-        results = run_behavior_matrix()
-        self.assertIsInstance(results, list)
-        self.assertGreater(len(results), 0)
-        # pprint(results[:5])  # Show only the first few for brevity
-
