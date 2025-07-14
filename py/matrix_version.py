@@ -4,45 +4,83 @@ import math
 from anytree import Node, RenderTree
 from typing import Union
 
-import tree_viz
+import matrix_viz
 
 
-def part1by1(x):
-    """Spread the bits of x so that there is one zero bit between each of the original bits."""
-    x &= 0xFFFF
-    x = (x | (x << 8)) & 0x00FF00FF
-    x = (x | (x << 4)) & 0x0F0F0F0F
-    x = (x | (x << 2)) & 0x33333333
-    x = (x | (x << 1)) & 0x55555555
-    return x
+def hilbert_xy_to_d(n, x, y):
+    """Convert (x, y) coordinates to Hilbert curve distance."""
+    d = 0
+    s = n // 2
+    while s > 0:
+        rx = int((x & s) > 0)
+        ry = int((y & s) > 0)
+        d += s * s * ((3 * rx) ^ ry)
+        x, y = hilbert_rot(s, x, y, rx, ry)
+        s //= 2
+    return d
 
 
-def morton_flipped(i, j):
-    """Your version: interleave column (j) first, then row (i)"""
-    return part1by1(j) | (part1by1(i) << 1)
-
-
-def morton_index(row, col):
-    return part1by1(row) | (part1by1(col) << 1)
-
-
-def compact1by1(x):
-    """Extract every other bit starting from LSB (reverse of part1by1)"""
-    x &= 0x55555555
-    x = (x | (x >> 1)) & 0x33333333
-    x = (x | (x >> 2)) & 0x0F0F0F0F
-    x = (x | (x >> 4)) & 0x00FF00FF
-    x = (x | (x >> 8)) & 0x0000FFFF
-    return x
-
-
-def inverse_morton(index: int) -> Tuple[int, int]:
-    x = compact1by1(index)
-    y = compact1by1(index >> 1)
+def hilbert_d_to_xy(n, d):
+    """Convert Hilbert curve distance to (x, y) coordinates."""
+    x = y = 0
+    s = 1
+    while s < n:
+        rx = int((d // 2) & 1)
+        ry = int((d ^ rx) & 1)
+        x, y = hilbert_rot(s, x, y, rx, ry)
+        x += s * rx
+        y += s * ry
+        d //= 4
+        s *= 2
     return x, y
 
 
-def get_matrix_from_int_morton(n: int) -> List[List[bool]]:
+def hilbert_rot(n, x, y, rx, ry):
+    """Rotate/flip quadrant appropriately for Hilbert curve."""
+    if ry == 0:
+        if rx == 1:
+            x = n - 1 - x
+            y = n - 1 - y
+        x, y = y, x
+    return x, y
+
+
+# def part1by1(x):
+#     """Spread the bits of x so that there is one zero bit between each of the original bits."""
+#     x &= 0xFFFF
+#     x = (x | (x << 8)) & 0x00FF00FF
+#     x = (x | (x << 4)) & 0x0F0F0F0F
+#     x = (x | (x << 2)) & 0x33333333
+#     x = (x | (x << 1)) & 0x55555555
+#     return x
+
+
+# def morton_flipped(i, j):
+#     """Your version: interleave column (j) first, then row (i)"""
+#     return part1by1(j) | (part1by1(i) << 1)
+
+
+# def morton_index(row, col):
+#     return part1by1(row) | (part1by1(col) << 1)
+
+
+# def compact1by1(x):
+#     """Extract every other bit starting from LSB (reverse of part1by1)"""
+#     x &= 0x55555555
+#     x = (x | (x >> 1)) & 0x33333333
+#     x = (x | (x >> 2)) & 0x0F0F0F0F
+#     x = (x | (x >> 4)) & 0x00FF00FF
+#     x = (x | (x >> 8)) & 0x0000FFFF
+#     return x
+
+
+# def inverse_morton(index: int) -> Tuple[int, int]:
+#     x = compact1by1(index)
+#     y = compact1by1(index >> 1)
+#     return x, y
+
+
+def get_matrix_from_int_hilbert(n: int) -> List[List[bool]]:
     if n == 0:
         return []
 
@@ -56,52 +94,73 @@ def get_matrix_from_int_morton(n: int) -> List[List[bool]]:
 
     for i in range(dim):
         for j in range(dim):
-            index = morton_index(i, j)
+            index = hilbert_xy_to_d(dim, i, j)
             if index < len(bitstr):
                 matrix[i][j] = bitstr[index] == "1"
 
     return matrix
 
 
-def get_matrix_from_int_flipped_morton(n: int) -> List[List[bool]]:
-    if n == 0:
-        return []
+# def get_matrix_from_int_morton(n: int) -> List[List[bool]]:
+#     if n == 0:
+#         return []
 
-    num_bits = n.bit_length()
-    sqr_ceil = math.ceil(math.sqrt(num_bits))
-    dim = 1 << (sqr_ceil - 1).bit_length()
-    total_bits = dim * dim
-    bitstr = bin(n)[2:].zfill(total_bits)[::-1]  # LSB-first
+#     num_bits = n.bit_length()
+#     sqr_ceil = math.ceil(math.sqrt(num_bits))
+#     dim = 1 if sqr_ceil < 1 else 1 << (sqr_ceil - 1).bit_length()
+#     total_bits = dim * dim
 
-    matrix = [[False for _ in range(dim)] for _ in range(dim)]
-    for i in range(dim):
-        for j in range(dim):
-            index = morton_flipped(i, j)
-            if index < total_bits:
-                matrix[i][j] = bitstr[index] == "1"
-    return matrix
+#     bitstr = bin(n)[2:].zfill(total_bits)[::-1]  # LSB first
+#     matrix = [[False for _ in range(dim)] for _ in range(dim)]
+
+#     for i in range(dim):
+#         for j in range(dim):
+#             index = morton_index(i, j)
+#             if index < len(bitstr):
+#                 matrix[i][j] = bitstr[index] == "1"
+
+#     return matrix
 
 
-def get_matrix_from_int_hybrid_morton(n: int) -> List[List[bool]]:
-    if n == 0:
-        return []
+# def get_matrix_from_int_flipped_morton(n: int) -> List[List[bool]]:
+#     if n == 0:
+#         return []
 
-    num_bits = n.bit_length()
-    sqr_ceil = math.ceil(math.sqrt(num_bits))
-    dim = 1 << (sqr_ceil - 1).bit_length()
-    total_bits = dim * dim
-    bitstr = bin(n)[2:].zfill(total_bits)[::-1]  # LSB-first
+#     num_bits = n.bit_length()
+#     sqr_ceil = math.ceil(math.sqrt(num_bits))
+#     dim = 1 << (sqr_ceil - 1).bit_length()
+#     total_bits = dim * dim
+#     bitstr = bin(n)[2:].zfill(total_bits)[::-1]  # LSB-first
 
-    matrix = [[False for _ in range(dim)] for _ in range(dim)]
-    for i in range(dim):
-        for j in range(dim):
-            if i < j:  # above diagonal: use flipped Morton
-                index = morton_flipped(i, j)
-            else:  # diagonal & below: use regular Morton
-                index = morton_index(i, j)
-            if index < total_bits:
-                matrix[i][j] = bitstr[index] == "1"
-    return matrix
+#     matrix = [[False for _ in range(dim)] for _ in range(dim)]
+#     for i in range(dim):
+#         for j in range(dim):
+#             index = morton_flipped(i, j)
+#             if index < total_bits:
+#                 matrix[i][j] = bitstr[index] == "1"
+#     return matrix
+
+
+# def get_matrix_from_int_hybrid_morton(n: int) -> List[List[bool]]:
+#     if n == 0:
+#         return []
+
+#     num_bits = n.bit_length()
+#     sqr_ceil = math.ceil(math.sqrt(num_bits))
+#     dim = 1 << (sqr_ceil - 1).bit_length()
+#     total_bits = dim * dim
+#     bitstr = bin(n)[2:].zfill(total_bits)[::-1]  # LSB-first
+
+#     matrix = [[False for _ in range(dim)] for _ in range(dim)]
+#     for i in range(dim):
+#         for j in range(dim):
+#             if i < j:  # above diagonal: use flipped Morton
+#                 index = morton_flipped(i, j)
+#             else:  # diagonal & below: use regular Morton
+#                 index = morton_index(i, j)
+#             if index < total_bits:
+#                 matrix[i][j] = bitstr[index] == "1"
+#     return matrix
 
 
 def get_matrix_from_int(n: int) -> List[List[bool]]:
@@ -130,7 +189,7 @@ def get_matrix_from_int(n: int) -> List[List[bool]]:
     return matrix
 
 
-def matrix_to_int_flipped_morton(matrix: List[List[bool]]) -> int:
+def matrix_to_int_hilbert(matrix: List[List[bool]]) -> int:
     if not matrix:
         return 0
 
@@ -138,30 +197,45 @@ def matrix_to_int_flipped_morton(matrix: List[List[bool]]) -> int:
     bits = ["0"] * (dim * dim)
     for i in range(dim):
         for j in range(dim):
-            index = morton_flipped(i, j)
+            index = hilbert_xy_to_d(dim, i, j)
             bits[index] = "1" if matrix[i][j] else "0"
 
     bits.reverse()  # LSB-last
     return int("".join(bits), 2)
 
 
-def matrix_to_int_hybrid_morton(matrix: List[List[bool]]) -> int:
-    if not matrix:
-        return 0
+# def matrix_to_int_flipped_morton(matrix: List[List[bool]]) -> int:
+#     if not matrix:
+#         return 0
 
-    dim = len(matrix)
-    bits = ["0"] * (dim * dim)
+#     dim = len(matrix)
+#     bits = ["0"] * (dim * dim)
+#     for i in range(dim):
+#         for j in range(dim):
+#             index = morton_flipped(i, j)
+#             bits[index] = "1" if matrix[i][j] else "0"
 
-    for i in range(dim):
-        for j in range(dim):
-            if i < j:
-                index = morton_flipped(i, j)
-            else:
-                index = morton_index(i, j)
-            bits[index] = "1" if matrix[i][j] else "0"
+#     bits.reverse()  # LSB-last
+#     return int("".join(bits), 2)
 
-    bits.reverse()  # LSB-last
-    return int("".join(bits), 2)
+
+# def matrix_to_int_hybrid_morton(matrix: List[List[bool]]) -> int:
+#     if not matrix:
+#         return 0
+
+#     dim = len(matrix)
+#     bits = ["0"] * (dim * dim)
+
+#     for i in range(dim):
+#         for j in range(dim):
+#             if i < j:
+#                 index = morton_flipped(i, j)
+#             else:
+#                 index = morton_index(i, j)
+#             bits[index] = "1" if matrix[i][j] else "0"
+
+#     bits.reverse()  # LSB-last
+#     return int("".join(bits), 2)
 
 
 class MatrixGraph:
@@ -223,25 +297,22 @@ class MatrixGraph:
         Recursively convert a MatrixGraph into an anytree.Node.
         If the graph is a leaf, return a node with its index.
         """
-        name = label if label else f"{self.to_int()}"
+        name = f"{label:}{self.to_int()}" if label else f"{self.to_int()}"
         root = Node(name)
 
-        for src, dst in self.entries:
+        for i, (src, dst) in enumerate(self.entries):
             edge_label = f"{src.to_int()} → {dst.to_int()}"
             # Recursively attach the destination as a child
-            child = dst.to_anytree(edge_label)
-            child.parent = root
-
+            child1 = src.to_anytree(f"L{i}:")
+            child2 = dst.to_anytree(f"R{i}:")
+            child1.parent = root
+            child2.parent = root
         return root
 
     def print_anytree(self):
         tree_root = self.to_anytree()
         for pre, _, node in RenderTree(tree_root):
             print(f"{pre}{node.name}")
-
-    def visualize(self):
-        # tree_viz.export_matrixgraph_graphviz(self, str(self.to_int()))
-        tree_viz.visualize_matrix_graph_spine(self, str(self.to_int()))
 
 
 def entries_from_matrix(
@@ -257,15 +328,17 @@ def entries_from_matrix(
 
 if __name__ == "__main__":
 
-    for i in range(1, 33):
-        mg = MatrixGraph(i)
-        dim = len(mg.to_matrix())
-        print(
-            f"n={i}, dim={dim}, entries={[ (e[0].to_int(), e[1].to_int()) for e in mg.entries ]}"
-        )
-        mg_int = mg.to_int()
-        assert mg.to_int() == i, f"mg_int for {i} is {mg.to_int()}"
-        mg.print_anytree()
+    for i in [1, 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47]:
+        for j, k in enumerate(range(i, 520 * i, i)):
+            mg = MatrixGraph(k)
+            dim = len(mg.to_matrix())
+            print(
+                f"n={i}, j={j} k={k} entries={[ (e[0].to_int(), e[1].to_int()) for e in mg.entries ]}"
+            )
+            mg_int = mg.to_int()
+            assert mg.to_int() == k, f"mg_int for {i} is {mg.to_int()}"
+        print("===============================")
+        # matrix_viz.visualize_matrixgraph_colored(mg, f"matrix_viz-{i}")
 
     # for i in range(258):
     #     m = MatrixGraph(i)

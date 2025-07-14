@@ -1,0 +1,33 @@
+test_store.yaml
+graph_store.yaml
+
+# Build directories
+build/
+_build/
+out/
+
+# IDE specific files
+.vscode/
+!.vscode/launch.json
+!.vscode/tasks.json
+.vs/
+*.swp
+*.swo
+
+# Compiled files
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+
+# Dependencies
+_deps/
+vcpkg_installed/

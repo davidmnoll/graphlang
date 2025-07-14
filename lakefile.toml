@@ -1,0 +1,10 @@
+name = "graphlang"
+version = "0.1.0"
+defaultTargets = ["graphlang"]
+
+[[lean_lib]]
+name = "Graphlang"
+
+[[lean_exe]]
+name = "graphlang"
+root = "Main"

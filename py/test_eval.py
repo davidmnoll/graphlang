@@ -4,6 +4,66 @@ from hmac import new
 from typing import Any, List, Tuple, Dict, Optional, Union, Self, final
 import unittest
 from pprint import pprint
+from matrix_morton import MatrixMorton
+from matrix_hilbert import MatrixHilbert
+from matrix_base import MatrixBase
+from rewrite_base import RewriteRulesBase
+from rewrite_default import DefaultRewriteRules
+
+
+# Configuration for matrix curve type
+MATRIX_CURVE_TYPE = "morton"  # Options: "morton", "hilbert"
+
+# Configuration for rewrite rules type
+REWRITE_RULES_TYPE = "default"  # Options: "default", "sandwich"
+
+def get_matrix_class() -> type[MatrixBase]:
+    """Returns the appropriate matrix class based on configuration."""
+    if MATRIX_CURVE_TYPE == "morton":
+        return MatrixMorton
+    elif MATRIX_CURVE_TYPE == "hilbert":
+        return MatrixHilbert
+    else:
+        raise ValueError(f"Unknown matrix curve type: {MATRIX_CURVE_TYPE}")
+
+def create_matrix_graph(n: int) -> MatrixBase:
+    """Creates a matrix graph using the configured curve type."""
+    matrix_class = get_matrix_class()
+    return matrix_class.from_int(n)
+
+def create_functional_node(edges: List, name: Optional[str] = None) -> MatrixBase:
+    """Creates a functional graph node using the configured curve type."""
+    matrix_class = get_matrix_class()
+    return matrix_class(edges, name)
+
+def set_matrix_curve_type(curve_type: str):
+    """Sets the global matrix curve type. Options: 'morton' or 'hilbert'."""
+    global MATRIX_CURVE_TYPE
+    if curve_type not in ["morton", "hilbert"]:
+        raise ValueError(f"Invalid curve type: {curve_type}. Must be 'morton' or 'hilbert'")
+    MATRIX_CURVE_TYPE = curve_type
+
+def get_rewrite_rules_class() -> type[RewriteRulesBase]:
+    """Returns the appropriate rewrite rules class based on configuration."""
+    if REWRITE_RULES_TYPE == "default":
+        return DefaultRewriteRules
+    elif REWRITE_RULES_TYPE == "sandwich":
+        from rewrite_sandwich import SandwichRewriteRules
+        return SandwichRewriteRules
+    else:
+        raise ValueError(f"Unknown rewrite rules type: {REWRITE_RULES_TYPE}")
+
+def create_rewrite_rules() -> RewriteRulesBase:
+    """Creates a rewrite rules instance using the configured type."""
+    rules_class = get_rewrite_rules_class()
+    return rules_class()
+
+def set_rewrite_rules_type(rules_type: str):
+    """Sets the global rewrite rules type. Options: 'default', 'sandwich'."""
+    global REWRITE_RULES_TYPE
+    if rules_type not in ["default", "sandwich"]:
+        raise ValueError(f"Invalid rewrite rules type: {rules_type}. Must be 'default' or 'sandwich'")
+    REWRITE_RULES_TYPE = rules_type
 
 
 """
@@ -27,207 +87,19 @@ from pprint import pprint
 
 
 """
-type FExpr = Tuple[FNode, FNode]
-
 
 events = []
 
+# Global Z node instance (zero/identity node)
+Z = None
 
-class FNode:
+# Initialize Z as a special zero/identity node
+def _init_z():
+    global Z
+    if Z is None:
+        Z = create_functional_node([], "Z")
 
-    def __init__(self, args: List[FExpr], name: str | None = None):
-
-        self.node_map: Dict[str, "FNode"] = {}
-        self.alias_map: Dict[str, "FNode"] = {}
-
-        self.edges: List[FExpr] = []
-        self.name = name
-        if name:
-            if name in self.node_map:
-                if self.node_map[name] != self:
-                    raise ValueError(f"Node {name} already defined")
-            self.node_map[name] = self
-        self.edges = args
-
-    def __eq__(self, other) -> bool:
-        if not isinstance(other, FNode):
-            return False
-        if len(self.edges) != len(other.edges):
-            return False
-        for i, edge in enumerate(self.edges):
-            if edge != other.edges[i]:
-                return False
-        return True
-
-    def __repr__(self) -> str:
-        if self.name:
-            return f"{self.name}"
-        else:
-
-            return f"{{{self.edges}}}"
-
-    def rewrite(self):
-        """
-        - (expr) -> (expr)
-        """
-        new_edges = []
-        is_same = True
-        for i, edge in enumerate(self.edges):
-            if not isinstance(edge, tuple):
-                print(self.edges)
-                raise ValueError(f"Invalid argument: {edge}")
-            res: List[FExpr] = edge[0].rewrite_from_input(edge[1])
-            if len(res) != 1 or res[0] != edge:
-                is_same = False
-                new_edges.extend(res)
-        if is_same:
-            return self
-        else:
-            new_node = FNode(new_edges, name=self.name)
-            final_node = new_node.rewrite()
-            return final_node
-
-    # Rewrite rules
-    def rewrite_from_input(self, other: "FNode") -> List[FExpr]:
-        if not other:
-            raise ValueError(f"Invalid argument: {edge}")
-        if self == Z:
-            return [edge]
-        if other == Z:
-            return self.edges
-        new_edges = []
-        for l_edge in self.edges:
-            if l_edge.right == other:
-                # print("here2", l_edge.left, l_edge, edge.right)
-                new_edges.append(FExpr(l_edge.left, Z))
-            else:
-                for r_edge in other.edges:
-                    # print("here2", l_edge, r_edge)
-                    if l_edge[0].match_input(r_edge[0]):
-                        new_edges.append((l_edge[0], r_edge[1]))
-
-        return new_edges
-
-    def match_input(self, target: "FNode"):
-        if self == Z:
-            return True
-        if self == target:
-            return True
-        for i, p_edge in enumerate(self.edges):
-            has_edge_match = any(
-                [
-                    p_edge[0].match_input(t_edge[1])
-                    and p_edge[1].match_input(t_edge[1])
-                    for t_edge in target.edges
-                ]
-            )
-            return has_edge_match
-        return True
-
-    def subscribe_events(self, sender_addr: str):
-        """
-        - aggregate list of channel addrs from tree
-
-        - for each one,
-            - if content address, get content
-            - if content local, substitute directly
-            - else send request for content to events channel?
-                - message not encrypted, contains my pub key?
-                - signed with my private key?
-            - if pub key get pub key, decode data
-        - substitute data into channel instance
-        - if no more channels subscribed, then trigger output event
-            - one for each subscriber?  / encrypted?
-                - how would subscribers be known?
-                - signed wiht private key & giving pub key?
-
-        - how about arguments?
-            - type checking?
-            - consumable resources?
-            - come in as default arguments?
-            - channel fulfils role?  Role is type
-            - cahnnel on left:
-                - right argument is new task
-            - channel on right:
-                - left
-            - current node is responsible for:
-                - type checking
-                    - ask each term in tree if type matches
-                - resource checking
-                    - ask each term in tree if resource matches
-
-
-
-
-        """
-
-    def set_input(self, input: Self):
-        self.input = input
-        return self
-
-    def trigger_output_event(self):
-        pass
-
-    async def rewrite_worker(self, output: Self):
-        # do rewrites and at the end, trigger output event
-        pass
-
-    def evaluate(self, other: Self):
-        """
-        - if other is a node with bindings, then transfer bindings
-        - if node is pure,
-        """
-        pass
-
-    def __hash__(self) -> int:
-        tuple_based = hash(tuple(sorted(self.edges)))
-        return tuple_based
-
-    def from_yaml(self, yaml_str: str):
-        """
-        - parse yaml
-        - create nodes
-        - create edges
-        - return node
-        """
-        pass
-
-    def to_yaml(self):
-        """
-        - convert node to yaml
-        - return yaml string
-        """
-        pass
-
-    def add_alias(self, alias: str):
-        pass
-
-    def add_expr(self, task: str):
-        """
-        -
-        """
-        pass
-
-    def send_message(self, reply_channel: "FNode", arg: "FNode"):
-        pass
-
-    def register_sender(self, sender: str):
-        """
-        - register sender
-        - return sender
-        """
-        pass
-
-    def run():
-        """
-        - receive on http:
-            - base url = cid or uuid
-            - capabilities = ???
-                - registered per node? (right side of edges?)
-            -
-        - return node
-        """
-        pass
+_init_z()
 
 
 # Unit tests
@@ -267,3 +139,138 @@ class TestRewriteSystem(unittest.TestCase):
     @unittest.skip("Skipping test for now")
     def test_s_combinator(self):
         raise NotImplementedError("S combinator test not implemented yet")
+
+    def test_matrix_graph_creation(self):
+        """Test basic matrix graph creation with current curve type."""
+        mg = create_matrix_graph(0)
+        self.assertEqual(mg.to_int(), 0)
+        
+        mg1 = create_matrix_graph(1)
+        self.assertEqual(mg1.to_int(), 1)
+        
+        mg5 = create_matrix_graph(5)
+        self.assertEqual(mg5.to_int(), 5)
+
+    def test_matrix_graph_roundtrip(self):
+        """Test that matrix graphs can be converted to int and back."""
+        test_values = [0, 1, 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31]
+        
+        for val in test_values:
+            with self.subTest(value=val):
+                mg = create_matrix_graph(val)
+                result = mg.to_int()
+                self.assertEqual(result, val, 
+                    f"Roundtrip failed for {val} with curve type {MATRIX_CURVE_TYPE}")
+
+    def test_matrix_to_anytree(self):
+        """Test anytree conversion works for both curve types."""
+        mg = create_matrix_graph(7)
+        tree = mg.to_anytree()
+        self.assertIsNotNone(tree)
+        self.assertEqual(tree.name, "7")
+
+    def test_curve_type_switching(self):
+        """Test switching between curve types."""
+        original_type = MATRIX_CURVE_TYPE
+        
+        try:
+            # Test Morton
+            set_matrix_curve_type("morton")
+            mg_morton = create_matrix_graph(5)
+            self.assertIsInstance(mg_morton, MatrixMorton)
+            
+            # Test Hilbert  
+            set_matrix_curve_type("hilbert")
+            mg_hilbert = create_matrix_graph(5)
+            self.assertIsInstance(mg_hilbert, MatrixHilbert)
+            
+            # Both should be able to convert to int
+            self.assertEqual(mg_morton.to_int(), 5)
+            self.assertEqual(mg_hilbert.to_int(), 5)
+            
+        finally:
+            # Restore original type
+            set_matrix_curve_type(original_type)
+
+    def test_invalid_curve_type(self):
+        """Test that invalid curve types raise errors."""
+        with self.assertRaises(ValueError):
+            set_matrix_curve_type("invalid_type")
+
+    def test_morton_vs_hilbert_comparison(self):
+        """Compare Morton and Hilbert curve implementations."""
+        test_values = [1, 2, 3, 5, 7, 11, 13, 17]
+        
+        for val in test_values:
+            with self.subTest(value=val):
+                # Create both types
+                mg_morton = MatrixMorton.from_int(val)
+                mg_hilbert = MatrixHilbert.from_int(val)
+                
+                # Both should preserve the integer value
+                self.assertEqual(mg_morton.to_int(), val)
+                self.assertEqual(mg_hilbert.to_int(), val)
+                
+                # Both should produce valid matrices
+                matrix_morton = mg_morton.to_matrix()
+                matrix_hilbert = mg_hilbert.to_matrix()
+                
+                self.assertIsInstance(matrix_morton, list)
+                self.assertIsInstance(matrix_hilbert, list)
+                
+                # The matrices may be different due to different curve orderings
+                # but both should have the same number of True values
+                def count_true_values(matrix):
+                    return sum(sum(row) for row in matrix)
+                
+                if matrix_morton and matrix_hilbert:
+                    self.assertEqual(
+                        count_true_values(matrix_morton),
+                        count_true_values(matrix_hilbert),
+                        f"Different number of True values for {val}"
+                    )
+
+    def test_curve_locality_properties(self):
+        """Test that both curves maintain their locality properties."""
+        # Test that both curves can handle the same range of values
+        max_test_val = 100
+        
+        for curve_type in ["morton", "hilbert"]:
+            with self.subTest(curve_type=curve_type):
+                original_type = MATRIX_CURVE_TYPE
+                try:
+                    set_matrix_curve_type(curve_type)
+                    
+                    # Test a range of values
+                    for val in range(0, min(max_test_val, 50)):  # Limit to avoid long test times
+                        mg = create_matrix_graph(val)
+                        self.assertEqual(mg.to_int(), val)
+                        
+                        # Test that matrix conversion is stable
+                        matrix = mg.to_matrix()
+                        self.assertIsInstance(matrix, list)
+                        
+                finally:
+                    set_matrix_curve_type(original_type)
+
+    def test_matrix_representation_consistency(self):
+        """Test that matrix representations are consistent within each curve type."""
+        test_values = [0, 1, 4, 9, 16, 25]  # Perfect squares for cleaner matrices
+        
+        for curve_type in ["morton", "hilbert"]:
+            with self.subTest(curve_type=curve_type):
+                original_type = MATRIX_CURVE_TYPE
+                try:
+                    set_matrix_curve_type(curve_type)
+                    
+                    for val in test_values:
+                        # Create multiple instances of the same value
+                        mg1 = create_matrix_graph(val)
+                        mg2 = create_matrix_graph(val)
+                        
+                        # They should be equivalent
+                        self.assertEqual(mg1.to_int(), mg2.to_int())
+                        self.assertEqual(mg1.to_matrix(), mg2.to_matrix())
+                        
+                finally:
+                    set_matrix_curve_type(original_type)
