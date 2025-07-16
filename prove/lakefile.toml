@@ -1,0 +1,17 @@
+name = "prove"
+defaultTargets = ["DigitStream"]
+
+[[require]]
+name = "batteries"
+scope = "leanprover-community"
+
+[[require]]
+name = "mathlib"
+scope = "leanprover-community"
+
+[[lean_lib]]
+name = "DigitStream"
+
+[[lean_exe]]
+name = "prove"
+root = "Main"
