@@ -2,7 +2,7 @@ from typing import List, Tuple, Union
 import math
 from anytree import Node, RenderTree
 
-import matrix_viz
+from .viz import matrix_viz
 from matrix_base import MatrixBase
 
 
@@ -144,5 +144,3 @@ class MatrixMorton(MatrixBase):
 
     def matrix_to_int(self, matrix: List[List[bool]]) -> int:
         return matrix_to_int_flipped_morton(matrix)
-
-

@@ -2,7 +2,7 @@ from typing import List, Tuple, Union
 import math
 from anytree import Node, RenderTree
 
-import matrix_viz
+from .viz import matrix_viz
 from matrix_base import MatrixBase
 
 
@@ -75,7 +75,7 @@ def matrix_to_int_hilbert(matrix: List[List[bool]]) -> int:
 
     dim = len(matrix)
     bits = ["0"] * (dim * dim)
-    
+
     # For each position in the matrix
     for i in range(dim):
         for j in range(dim):
@@ -96,5 +96,3 @@ class MatrixHilbert(MatrixBase):
 
     def matrix_to_int(self, matrix: List[List[bool]]) -> int:
         return matrix_to_int_hilbert(matrix)
-
-

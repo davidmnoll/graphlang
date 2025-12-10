@@ -1,5 +1,5 @@
 name = "prove"
-defaultTargets = ["DigitStream"]
+defaultTargets = ["DigitStream", "GraphLang"]
 
 [[require]]
 name = "batteries"
@@ -12,6 +12,13 @@ scope = "leanprover-community"
 [[lean_lib]]
 name = "DigitStream"
 
+[[lean_lib]]
+name = "GraphLang"
+
+[[lean_lib]]
+name = "DigitLaurel"
+
+
 [[lean_exe]]
-name = "prove"
+name = "main"
 root = "Main"
