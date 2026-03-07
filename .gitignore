@@ -3,6 +3,8 @@ test_store.yaml
 graph_store.yaml
 
 # Build directories
+artifacts
+
 build/
 _build/
 out/
