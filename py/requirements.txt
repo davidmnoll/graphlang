@@ -1,0 +1,5 @@
+anytree
+imagio
+graphviz
+numpy
+matplotlib
