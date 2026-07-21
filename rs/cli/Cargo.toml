@@ -1,0 +1,17 @@
+[package]
+name = "graphlang"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "graphlang"
+path = "src/main.rs"
+
+[dependencies]
+graphlang-core = { path = "../core" }
+serde_json = { workspace = true }
+axum = { version = "0.8", features = ["ws"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "net", "time"] }
+futures-util = "0.3"
+ratatui = "0.29"
+clap = { version = "4", features = ["derive"] }

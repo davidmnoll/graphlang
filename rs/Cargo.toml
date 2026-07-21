@@ -1,0 +1,11 @@
+[workspace]
+resolver = "2"
+members = ["core", "cli", "web"]
+
+[workspace.dependencies]
+num-bigint = "0.4"
+num-traits = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Must match the installed wasm-bindgen CLI exactly (see build-web.sh).
+wasm-bindgen = "=0.2.104"

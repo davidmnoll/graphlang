@@ -1,0 +1,13 @@
+[package]
+name = "graphlang-core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+
+# BrowserAdapter is only compiled for the browser wasm target.
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
+wasm-bindgen = { workspace = true }

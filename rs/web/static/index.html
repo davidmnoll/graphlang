@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>graphlang channel</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    font-family: ui-monospace, "Cascadia Code", Menlo, monospace;
+    background: #101418; color: #d7dde4;
+    max-width: 42rem; margin: 3rem auto; padding: 0 1rem;
+  }
+  h1 { font-size: 1rem; font-weight: 600; color: #7aa2f7; }
+  label { display: block; margin: 1rem 0 .25rem; font-size: .8rem; color: #8b98a5; }
+  #box {
+    width: 100%; box-sizing: border-box; font: inherit;
+    background: #171c22; color: inherit; border: 1px solid #2a323c;
+    border-radius: 6px; padding: .6rem .7rem;
+  }
+  #box:focus { outline: none; border-color: #7aa2f7; }
+  .stream { padding: .6rem .7rem; background: #171c22; border-radius: 6px;
+            border: 1px solid #2a323c; min-height: 1.2em; white-space: pre-wrap; }
+  .meta { font-size: .75rem; color: #5b6570; margin-top: .3rem; }
+  #conflict { display: none; margin-top: 1rem; border: 1px solid #e0af68;
+              border-radius: 6px; padding: .8rem; }
+  #conflict.active { display: block; }
+  #conflict p { margin: 0 0 .6rem; color: #e0af68; font-size: .85rem; }
+  #conflict button {
+    font: inherit; margin-right: .5rem; padding: .35rem .7rem; cursor: pointer;
+    background: #1f2630; color: inherit; border: 1px solid #2a323c; border-radius: 6px;
+  }
+  #conflict button:hover { border-color: #7aa2f7; }
+  #status { font-size: .75rem; color: #5b6570; margin-top: 2rem; }
+</style>
+</head>
+<body>
+<h1>graphlang · web endpoint</h1>
+
+<label for="box">local stream (a)</label>
+<input id="box" autocomplete="off" spellcheck="false">
+
+<label>agreed stream (e)</label>
+<div class="stream" id="agreed"></div>
+<div class="meta">cid <span id="digest"></span></div>
+
+<div id="conflict">
+  <p>two proposals share the same base — a handler must choose:</p>
+  <button id="ours"></button>
+  <button id="theirs"></button>
+</div>
+
+<div id="status">connecting…</div>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>
