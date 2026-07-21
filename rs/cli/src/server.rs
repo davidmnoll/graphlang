@@ -1,8 +1,9 @@
-//! Embedded web server: serves the wasm client and bridges the websocket
-//! to the TUI thread. One browser connection at a time; a new connection
-//! replaces the previous one.
+//! Embedded web server: serves the wasm client and bridges websockets to
+//! the TUI thread. Any number of peers (browser tabs, attached TUIs) may
+//! be connected at once; each inbound message is relayed to every other
+//! peer and handed to the host TUI.
 
-use crate::{AppEvent, ClientHandle};
+use crate::{AppEvent, Peers};
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -14,12 +15,13 @@ use axum::{
     Router,
 };
 use futures_util::{SinkExt, StreamExt};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 
 #[derive(Clone)]
 struct ServerState {
     to_tui: Sender<AppEvent>,
-    client: ClientHandle,
+    peers: Peers,
 }
 
 macro_rules! asset {
@@ -34,8 +36,8 @@ macro_rules! asset {
     };
 }
 
-pub async fn run(port: u16, to_tui: Sender<AppEvent>, client: ClientHandle) {
-    let state = ServerState { to_tui, client };
+pub async fn run(listener: std::net::TcpListener, to_tui: Sender<AppEvent>, peers: Peers) {
+    let state = ServerState { to_tui, peers };
     let app = Router::new()
         .route("/", asset!("index.html", "text/html; charset=utf-8"))
         .route("/app.js", asset!("app.js", "text/javascript"))
@@ -47,9 +49,7 @@ pub async fn run(port: u16, to_tui: Sender<AppEvent>, client: ClientHandle) {
         .route("/ws", get(ws_upgrade))
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
-        .await
-        .unwrap_or_else(|e| panic!("cannot bind 127.0.0.1:{port}: {e}"));
+    let listener = tokio::net::TcpListener::from_std(listener).expect("tokio listener");
     axum::serve(listener, app).await.expect("server");
 }
 
@@ -58,8 +58,11 @@ async fn ws_upgrade(ws: WebSocketUpgrade, State(state): State<ServerState>) -> i
 }
 
 async fn handle_socket(socket: WebSocket, state: ServerState) {
+    static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+    let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-    *state.client.lock().unwrap() = Some(tx);
+    state.peers.lock().unwrap().push((id, tx));
     let _ = state.to_tui.send(AppEvent::Connected);
 
     let (mut sink, mut stream) = socket.split();
@@ -71,16 +74,23 @@ async fn handle_socket(socket: WebSocket, state: ServerState) {
                         break;
                     }
                 }
-                None => break, // our sender was replaced by a newer connection
+                None => break,
             },
             inbound = stream.next() => match inbound {
                 Some(Ok(Message::Text(text))) => {
-                    let _ = state.to_tui.send(AppEvent::Inbound(text.to_string()));
+                    let text = text.to_string();
+                    for (peer, tx) in state.peers.lock().unwrap().iter() {
+                        if *peer != id {
+                            let _ = tx.send(text.clone());
+                        }
+                    }
+                    let _ = state.to_tui.send(AppEvent::Inbound(text));
                 }
                 Some(Ok(_)) => {}
                 _ => break,
             },
         }
     }
+    state.peers.lock().unwrap().retain(|(peer, _)| *peer != id);
     let _ = state.to_tui.send(AppEvent::Disconnected);
 }

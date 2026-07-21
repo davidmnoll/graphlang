@@ -6,7 +6,7 @@
 //! semantics land on the `GNode`/`GExpr` interface (mirrors the stubs in
 //! web/src/lib.rs). Wire messages stay raw JSON strings for now.
 
-use crate::{AppEvent, ClientHandle};
+use crate::{AppEvent, Mode, Peers};
 use graphlang_core::GClient;
 use ratatui::{
     crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
@@ -23,18 +23,20 @@ struct App {
     g_client: GClient,
     input: String,
     log: Vec<String>,
-    connected: bool,
+    peer_count: usize,
     port: u16,
+    mode: Mode,
 }
 
-pub fn run(events: Receiver<AppEvent>, client: ClientHandle, port: u16) -> std::io::Result<()> {
+pub fn run(events: Receiver<AppEvent>, peers: Peers, port: u16, mode: Mode) -> std::io::Result<()> {
     let mut terminal = ratatui::init();
     let mut app = App {
         g_client: GClient::new(),
         input: String::new(),
         log: Vec::new(),
-        connected: false,
+        peer_count: 0,
         port,
+        mode,
     };
 
     let result = loop {
@@ -42,7 +44,7 @@ pub fn run(events: Receiver<AppEvent>, client: ClientHandle, port: u16) -> std::
             break Err(e);
         }
         while let Ok(ev) = events.try_recv() {
-            app.on_server_event(ev, &client);
+            app.on_channel_event(ev, &peers);
         }
         match event::poll(Duration::from_millis(50)) {
             Ok(true) => match event::read() {
@@ -52,7 +54,7 @@ pub fn run(events: Receiver<AppEvent>, client: ClientHandle, port: u16) -> std::
                     if ctrl_c || key.code == KeyCode::Esc {
                         break Ok(());
                     }
-                    app.on_key(key.code, &client);
+                    app.on_key(key.code, &peers);
                 }
                 Ok(_) => {}
                 Err(e) => break Err(e),
@@ -67,14 +69,18 @@ pub fn run(events: Receiver<AppEvent>, client: ClientHandle, port: u16) -> std::
 }
 
 impl App {
-    fn send_all(&mut self, msgs: Vec<String>, client: &ClientHandle) {
+    fn send_all(&mut self, msgs: Vec<String>, peers: &Peers) {
         if msgs.is_empty() {
             return;
         }
-        if let Some(tx) = client.lock().unwrap().as_ref() {
-            for msg in msgs {
-                self.log.push(format!("tui  {msg}"));
-                let _ = tx.send(msg);
+        let peers = peers.lock().unwrap();
+        if peers.is_empty() {
+            return;
+        }
+        for msg in msgs {
+            self.log.push(format!("tui  {msg}"));
+            for (_, tx) in peers.iter() {
+                let _ = tx.send(msg.clone());
             }
         }
     }
@@ -111,22 +117,22 @@ impl App {
         (String::new(), String::new())
     }
 
-    fn on_server_event(&mut self, ev: AppEvent, client: &ClientHandle) {
+    fn on_channel_event(&mut self, ev: AppEvent, peers: &Peers) {
         match ev {
             AppEvent::Connected => {
-                self.connected = true;
+                self.peer_count += 1;
                 let out = self.replay();
-                self.send_all(out, client);
+                self.send_all(out, peers);
             }
-            AppEvent::Disconnected => self.connected = false,
+            AppEvent::Disconnected => self.peer_count = self.peer_count.saturating_sub(1),
             AppEvent::Inbound(json) => {
                 let out = self.receive(&json);
-                self.send_all(out, client);
+                self.send_all(out, peers);
             }
         }
     }
 
-    fn on_key(&mut self, code: KeyCode, client: &ClientHandle) {
+    fn on_key(&mut self, code: KeyCode, peers: &Peers) {
         // While the conflict condition holds, this handler is modal: the
         // only moves are picking a side.
         if self.conflict().is_some() {
@@ -147,7 +153,7 @@ impl App {
         }
         let text = self.input.clone();
         let out = self.local_edit(&text);
-        self.send_all(out, client);
+        self.send_all(out, peers);
     }
 
     fn render(&self, f: &mut Frame) {
@@ -171,10 +177,16 @@ impl App {
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(format!("http://localhost:{}  ", self.port), dim),
-            if self.connected {
-                Span::styled("web client connected", Style::default().fg(Color::Green))
-            } else {
-                Span::styled("waiting for web client…", dim)
+            match (self.mode, self.peer_count) {
+                (Mode::Host, 0) => Span::styled("hosting, waiting for peers…", dim),
+                (Mode::Host, n) => Span::styled(
+                    format!("hosting, {n} peer{} connected", if n == 1 { "" } else { "s" }),
+                    Style::default().fg(Color::Green),
+                ),
+                (Mode::Attached, 0) => Span::styled("attaching to session…", dim),
+                (Mode::Attached, _) => {
+                    Span::styled("attached to session", Style::default().fg(Color::Green))
+                }
             },
             Span::styled("  (esc quits)", dim),
         ]);
