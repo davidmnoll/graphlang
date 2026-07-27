@@ -1,66 +1,71 @@
 //! wasm-bindgen bindings: the browser side of the channel.
 //!
-//! Two things reach JS:
-//! - [`BrowserAdapter`] (from core): the word-level `GraphLang` machine.
-//! - [`Client`]: the `GNode`/`GExpr` endpoint. The protocol methods keep
-//!   the signatures `static/app.js` expects, but are inert stubs until
-//!   the channel semantics land on the new interface.
+//! [`Client`] wraps the shared `GContext` protocol methods behind the
+//! JSON-string signatures `static/app.js` expects — the browser twin of
+//! the TUI's `App` in cli/src/tui.rs, which wraps the same methods for
+//! ratatui. The protocol bodies live in core as inert stubs until the
+//! channel semantics land.
 
-use graphlang_core::GClient;
+use graphlang_core::GContext;
 use wasm_bindgen::prelude::*;
 
-#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-pub use graphlang_core::BrowserAdapter;
-
 #[wasm_bindgen]
-pub struct Client(GClient);
+pub struct Client {
+    context: GContext,
+}
 
-impl Default for Client {
-    fn default() -> Self {
-        Self::new()
-    }
+fn to_json(msgs: Vec<String>) -> String {
+    serde_json::to_string(&msgs).unwrap_or_else(|_| "[]".into())
 }
 
 #[wasm_bindgen]
 impl Client {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Client {
-        Client(GClient::new())
+        let mut context = GContext::new();
+        Client { context }
     }
 
-    /// Textbox changed. Returns a JSON array of messages to send.
-    pub fn local_edit(&mut self, _text: &str) -> String {
-        // TODO: diff against the agreed graph via self.0.root_node().
-        "[]".into()
+    /// State sync on (re)connect. Returns a JSON array of messages.
+    pub fn replay(&self) -> String {
+        to_json(self.context.replay())
     }
 
     /// One inbound wire message. Returns a JSON array of messages to send.
-    pub fn receive(&mut self, _json: &str) -> String {
-        // TODO: decode a GExpr and insert it: root_node().insert_expr().
-        "[]".into()
+    pub fn receive(&mut self, json: &str) {
+        self.context.receive(json);
+    }
+
+    /// Textbox changed. Returns a JSON array of messages to send.
+    pub fn local_edit(&mut self, text: &str) -> String {
+        to_json(self.context.local_edit(text))
     }
 
     /// `null`, or `{"ours": text, "theirs": text}` — the resolved views of
     /// the two same-base proposals currently in the channel.
     pub fn conflict(&self) -> String {
-        // TODO: surface the conflict condition from contains_match().
-        "null".into()
+        match self.context.conflict() {
+            Some((ours, theirs)) => {
+                serde_json::json!({ "ours": ours, "theirs": theirs }).to_string()
+            }
+            None => "null".into(),
+        }
     }
 
     /// `choice` is "ours" or "theirs". Returns a JSON array of messages.
-    pub fn resolve(&mut self, _choice: &str) -> String {
-        "[]".into()
+    pub fn resolve(&mut self, choice: &str) -> String {
+        to_json(self.context.resolve(choice))
     }
 
     pub fn agreed_text(&self) -> String {
-        String::new()
-    }
-
-    pub fn local_text(&self) -> String {
-        String::new()
+        self.context.agreed_view().0
     }
 
     pub fn agreed_digest(&self) -> String {
+        self.context.agreed_view().1
+    }
+
+    pub fn local_text(&self) -> String {
         String::new()
     }
 }

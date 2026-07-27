@@ -2,12 +2,12 @@
 //! the channel log, and — when the conflict condition holds — an
 //! interactive resolver (the effect handler in scope here is you).
 //!
-//! The protocol methods on `App` are inert stubs until the channel
-//! semantics land on the `GNode`/`GExpr` interface (mirrors the stubs in
-//! web/src/lib.rs). Wire messages stay raw JSON strings for now.
+//! Protocol behavior comes from the shared `GContext` methods in core
+//! (web/src/lib.rs wraps the same methods for the browser); this module
+//! only owns rendering and input.
 
 use crate::{AppEvent, Mode, Peers};
-use graphlang_core::GClient;
+use graphlang_core::GContext;
 use ratatui::{
     crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     layout::{Constraint, Layout},
@@ -20,7 +20,8 @@ use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
 struct App {
-    g_client: GClient,
+    context: GContext,
+    /// This endpoint's channel head; moves forward as messages arrive.
     input: String,
     log: Vec<String>,
     peer_count: usize,
@@ -30,8 +31,9 @@ struct App {
 
 pub fn run(events: Receiver<AppEvent>, peers: Peers, port: u16, mode: Mode) -> std::io::Result<()> {
     let mut terminal = ratatui::init();
+    let mut context = GContext::new();
     let mut app = App {
-        g_client: GClient::new(),
+        context,
         input: String::new(),
         log: Vec::new(),
         peer_count: 0,
@@ -85,49 +87,18 @@ impl App {
         }
     }
 
-    /// State sync on (re)connect.
-    /// TODO: replay the agreed graph as GExprs (nil → agreed).
-    fn replay(&self) -> Vec<String> {
-        Vec::new()
-    }
-
-    /// One inbound wire message. Returns messages to send back.
-    /// TODO: decode a GExpr and graft it: root_node().insert_expr().
-    fn receive(&mut self, json: &str) -> Vec<String> {
-        self.log.push(format!("web  {json}"));
-        Vec::new()
-    }
-
-    /// The conflict condition: two proposals share a base. Resolved views
-    /// of (ours, theirs). TODO: surface from contains_match().
-    fn conflict(&self) -> Option<(String, String)> {
-        None
-    }
-
-    /// Textbox changed. Returns messages to send.
-    /// TODO: diff against the agreed graph via root_node().
-    fn local_edit(&mut self, _text: &str) -> Vec<String> {
-        Vec::new()
-    }
-
-    /// The agreed pane: (text, digest).
-    /// TODO: derive both from self.g_client.root_node().
-    fn agreed_view(&self) -> (String, String) {
-        let _root = self.g_client.root_node();
-        (String::new(), String::new())
-    }
-
     fn on_channel_event(&mut self, ev: AppEvent, peers: &Peers) {
         match ev {
             AppEvent::Connected => {
                 self.peer_count += 1;
-                let out = self.replay();
+                let out = self.context.replay();
                 self.send_all(out, peers);
             }
             AppEvent::Disconnected => self.peer_count = self.peer_count.saturating_sub(1),
             AppEvent::Inbound(json) => {
-                let out = self.receive(&json);
-                self.send_all(out, peers);
+                self.log.push(format!("web  {json}"));
+                self.context.receive(&json);
+                self.context.broadcast();
             }
         }
     }
@@ -135,13 +106,16 @@ impl App {
     fn on_key(&mut self, code: KeyCode, peers: &Peers) {
         // While the conflict condition holds, this handler is modal: the
         // only moves are picking a side.
-        if self.conflict().is_some() {
-            let _resolution = match code {
+        if self.context.conflict().is_some() {
+            let resolution = match code {
                 KeyCode::Char('o') => Some("ours"),
                 KeyCode::Char('t') => Some("theirs"),
                 _ => None,
             };
-            // TODO: resolve on the graph and send the superseding exprs.
+            if let Some(choice) = resolution {
+                let out = self.context.resolve(choice);
+                self.send_all(out, peers);
+            }
             return;
         }
         match code {
@@ -152,12 +126,12 @@ impl App {
             _ => return,
         }
         let text = self.input.clone();
-        let out = self.local_edit(&text);
+        let out = self.context.local_edit(&text);
         self.send_all(out, peers);
     }
 
     fn render(&self, f: &mut Frame) {
-        let conflict = self.conflict();
+        let conflict = self.context.conflict();
         let conflict_height = if conflict.is_some() { 4 } else { 0 };
         let [status, input, agreed, conflict_area, log] = Layout::vertical([
             Constraint::Length(1),
@@ -180,7 +154,10 @@ impl App {
             match (self.mode, self.peer_count) {
                 (Mode::Host, 0) => Span::styled("hosting, waiting for peers…", dim),
                 (Mode::Host, n) => Span::styled(
-                    format!("hosting, {n} peer{} connected", if n == 1 { "" } else { "s" }),
+                    format!(
+                        "hosting, {n} peer{} connected",
+                        if n == 1 { "" } else { "s" }
+                    ),
                     Style::default().fg(Color::Green),
                 ),
                 (Mode::Attached, 0) => Span::styled("attaching to session…", dim),
@@ -204,7 +181,7 @@ impl App {
             f.set_cursor_position((input.x + 1 + self.input.chars().count() as u16, input.y + 1));
         }
 
-        let (agreed_text, digest) = self.agreed_view();
+        let (agreed_text, digest) = self.context.agreed_view();
         f.render_widget(
             Paragraph::new(vec![
                 Line::from(agreed_text),

@@ -3,21 +3,28 @@
 Stub for the channel/effect variant of graphlang: the AST is sets of
 2-tuples, terms are messages in channels, and a channel converges on a
 shared value. What runs today is the channel itself: a TUI endpoint and a
-browser (wasm) endpoint that stream text edits at each other and agree on
-a shared string via propose/echo.
+browser (wasm) endpoint joined by a websocket, with the protocol methods
+left as stubs where the semantics will land.
 
 ## Layout
 
-- `core/` — `graphlang-core`: encoding + protocol, compiles natively and to wasm
-  - `zorder.rs` — pair/unpair: HEAD at odd bits, TAIL at even bits, nil = 0
-  - `name.rs` — string ⇄ list of lists of bits ⇄ packed integer
-  - `cid.rs` — sparse content id: the support of the packed integer as
-    `(char, bit)` coords; `(i, j)` ⇔ bit position `2^i * (2^(j+1)+1)`
-  - `channel.rs` — `Endpoint` state machine: propose / echo-accept /
-    commit; conflict = two proposals sharing a base, resolved by whatever
-    handler is in scope
-- `web/` — `graphlang-web`: wasm-bindgen bindings + the static page
-- `cli/` — the `graphlang` binary: ratatui TUI + embedded axum server
+- `core/` — `graphlang-core`: platform-neutral endpoint logic
+  - `expr.rs` — `GContext`: the term graph — an arena of nodes referenced
+    by `NodeId` (pointer-fast internally; content addresses derived only
+    at the boundary via `cid()`), channels in `channel_map`, rooting from
+    channels — plus the `GNode`/`GExpr` interfaces the semantics land on.
+    `GContext` also carries the protocol surface every endpoint calls
+    (`local_edit`, `receive`, `replay`, `conflict`, `resolve`,
+    `agreed_view`), as inert stubs. Platform glue lives in the importing
+    crates — core compiles unchanged for native and wasm
+- `web/` — `graphlang-web`: the browser veneer — `Client` wraps
+  `GContext` behind JSON-string signatures via wasm-bindgen, and
+  `static/app.js` mirrors the TUI's `App` design (one channel-event
+  handler, conflict-gated input, sendAll fan-out)
+- `cli/` — the `graphlang` binary: ratatui TUI + embedded axum server.
+  The first instance to bind the port hosts (serving the web endpoint and
+  relaying between all peers); later instances auto-attach to the running
+  session over the same websocket, so it can be open in many terminals
 
 ## Build & run
 
@@ -26,20 +33,17 @@ a shared string via propose/echo.
 cargo run -p graphlang    # TUI; serves http://localhost:7341
 ```
 
-Open the printed URL, type in either the browser box or the TUI box.
-Concurrent edits on both sides surface the conflict condition in both UIs;
-pick a side with the buttons (web) or `o`/`t` (TUI). `Esc` quits the TUI.
+Open the printed URL, or run `cargo run -p graphlang` again in another
+terminal to attach a second TUI. From the repo root, `make tui-pair`,
+`make web-pair`, and `make tui-web` launch ready-made endpoint pairs.
+`Esc` quits a TUI. Conflict resolution (`o`/`t` in the TUI, buttons on the
+web) is wired through the protocol stubs and inert until the semantics
+land.
 
 Requires the wasm target and a wasm-bindgen CLI matching the version
-pinned in `web/Cargo.toml`:
+pinned in the workspace `Cargo.toml`:
 
 ```sh
 rustup target add wasm32-unknown-unknown
 cargo install wasm-bindgen-cli --version <pinned version>
-```
-
-## Tests
-
-```sh
-cargo test               # encoding, cid math vs pack(), endpoint convergence
 ```

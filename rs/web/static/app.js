@@ -1,41 +1,83 @@
+// The browser endpoint, mirroring the design of cli/src/tui.rs: an `App`
+// owns the endpoint state (`context`) plus rendering, channel events
+// arrive as one `onChannelEvent(ev)` (the AppEvent enum), input is gated
+// by the conflict condition, and `sendAll` fans messages to the peers —
+// here the single websocket to the host.
+
 import init, { Client } from './graphlang_web.js';
 
 await init();
 
-const client = new Client();
-const box = document.getElementById('box');
-const agreedEl = document.getElementById('agreed');
-const digestEl = document.getElementById('digest');
-const conflictEl = document.getElementById('conflict');
-const oursBtn = document.getElementById('ours');
-const theirsBtn = document.getElementById('theirs');
-const statusEl = document.getElementById('status');
+const dom = {
+  box: document.getElementById('box'),
+  agreed: document.getElementById('agreed'),
+  digest: document.getElementById('digest'),
+  conflict: document.getElementById('conflict'),
+  ours: document.getElementById('ours'),
+  theirs: document.getElementById('theirs'),
+  status: document.getElementById('status'),
+};
 
-const ws = new WebSocket(`ws://${location.host}/ws`);
-ws.onopen = () => { statusEl.textContent = 'channel open'; };
-ws.onclose = () => { statusEl.textContent = 'channel closed — restart graphlang and reload'; };
+class App {
+  constructor(ws) {
+    this.context = new Client();
+    this.ws = ws;
+  }
 
-function sendAll(json) {
-  for (const msg of JSON.parse(json)) ws.send(JSON.stringify(msg));
-  refresh();
-}
+  sendAll(json) {
+    for (const msg of JSON.parse(json)) this.ws.send(JSON.stringify(msg));
+    this.render();
+  }
 
-ws.onmessage = (e) => sendAll(client.receive(e.data));
-box.addEventListener('input', () => sendAll(client.local_edit(box.value)));
-oursBtn.addEventListener('click', () => sendAll(client.resolve('ours')));
-theirsBtn.addEventListener('click', () => sendAll(client.resolve('theirs')));
+  onChannelEvent(ev) {
+    switch (ev.kind) {
+      case 'connected':
+        dom.status.textContent = 'channel open';
+        this.sendAll(this.context.replay());
+        break;
+      case 'disconnected':
+        dom.status.textContent = 'channel closed — restart graphlang and reload';
+        break;
+      case 'inbound':
+        this.sendAll(this.context.receive(ev.json));
+        break;
+    }
+  }
 
-function refresh() {
-  agreedEl.textContent = client.agreed_text();
-  digestEl.textContent = client.agreed_digest();
-  const local = client.local_text();
-  if (box.value !== local) box.value = local;
-  const conflict = JSON.parse(client.conflict());
-  conflictEl.classList.toggle('active', conflict !== null);
-  if (conflict) {
-    oursBtn.textContent = `keep ours: "${conflict.ours}"`;
-    theirsBtn.textContent = `take theirs: "${conflict.theirs}"`;
+  // While the conflict condition holds, input is modal: the only moves
+  // are picking a side (the buttons).
+  onInput(text) {
+    if (JSON.parse(this.context.conflict()) !== null) return;
+    this.sendAll(this.context.local_edit(text));
+  }
+
+  onResolve(choice) {
+    this.sendAll(this.context.resolve(choice));
+  }
+
+  render() {
+    dom.agreed.textContent = this.context.agreed_text();
+    dom.digest.textContent = this.context.agreed_digest();
+    const local = this.context.local_text();
+    if (dom.box.value !== local) dom.box.value = local;
+    const conflict = JSON.parse(this.context.conflict());
+    dom.conflict.classList.toggle('active', conflict !== null);
+    if (conflict) {
+      dom.ours.textContent = `keep ours: "${conflict.ours}"`;
+      dom.theirs.textContent = `take theirs: "${conflict.theirs}"`;
+    }
   }
 }
 
-refresh();
+const ws = new WebSocket(`ws://${location.host}/ws`);
+const app = new App(ws);
+
+ws.onopen = () => app.onChannelEvent({ kind: 'connected' });
+ws.onclose = () => app.onChannelEvent({ kind: 'disconnected' });
+ws.onmessage = (e) => app.onChannelEvent({ kind: 'inbound', json: e.data });
+
+dom.box.addEventListener('input', () => app.onInput(dom.box.value));
+dom.ours.addEventListener('click', () => app.onResolve('ours'));
+dom.theirs.addEventListener('click', () => app.onResolve('theirs'));
+
+app.render();
