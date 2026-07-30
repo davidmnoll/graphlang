@@ -10,7 +10,7 @@ pub trait GNode {
      * fixpoint thing?  
      *
      *
-     *
+     * 
      *   
      */
 
@@ -34,7 +34,7 @@ pub trait GNode {
      * serializations
      * json, yaml, numeric
      */
-    pub fn cid(&self) -> String {
+    fn cid(&self) -> String {
         String::new()
     }
 }
