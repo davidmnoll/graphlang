@@ -53,6 +53,36 @@ pub struct GContext {
     channel_map: HashMap<String, GCapability>,
 }
 
+
+pub struct GConstant { 
+
+}
+
+
+pub struct GPiecewise { 
+/**
+ * Set of pairs
+ * - positive/negative flag
+ * - 
+ * 
+ * 
+ */
+
+
+}
+
+
+pub struct GPeriodic { 
+
+}
+
+
+
+
+
+
+
+
 impl GContext {
     /**
      * actual:
