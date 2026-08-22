@@ -22,9 +22,13 @@ pub trait GNode {
 
     fn has_edge(&self, a: &dyn GNode, b: &dyn GNode);
 
-    fn compose(&self);
+    fn add_edge_generator(&self);
 
-    // fn fork
+    fn meet(&self); // place where multiple deps are used
+
+    fn join(&self); // shared dependency
+
+    fn evaluate(&self);
 
     fn match_node(&self) -> Box<dyn GNode>;
 
