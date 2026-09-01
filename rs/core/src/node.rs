@@ -10,7 +10,7 @@ pub trait GNode {
      * fixpoint thing?  
      *
      *
-     * 
+     *
      *   
      */
 
@@ -22,17 +22,29 @@ pub trait GNode {
 
     fn has_edge(&self, a: &dyn GNode, b: &dyn GNode);
 
+    fn map_edges(&self);
+
+    fn filter_edges(&self);
+
+    fn reduce_edges(&self);
+
+    fn is_equal(&self);
+
     fn add_edge_generator(&self);
 
-    fn meet(&self); // place where multiple deps are used
+    fn meet(&self); // add into new node with self as meet point?
 
-    fn join(&self); // shared dependency
+    fn join(&self); // add into new node with self as join point?
 
     fn evaluate(&self);
 
     fn match_node(&self) -> Box<dyn GNode>;
 
     fn insert_expr(&self) -> Box<dyn GNode>;
+
+    fn check(&self);
+
+    fn infer(&self);
 
     /**
      * serializations
@@ -57,35 +69,19 @@ pub struct GContext {
     channel_map: HashMap<String, GCapability>,
 }
 
+pub struct GConstant {}
 
-pub struct GConstant { 
+// pub struct GPiecewise {
+// /**
+//  * Set of pairs
+//  * - positive/negative flag
+//  * -
+//  *
+//  *
+//  */
+// }
 
-}
-
-
-pub struct GPiecewise { 
-/**
- * Set of pairs
- * - positive/negative flag
- * - 
- * 
- * 
- */
-
-
-}
-
-
-pub struct GPeriodic { 
-
-}
-
-
-
-
-
-
-
+pub struct GPeriodic {}
 
 impl GContext {
     /**
@@ -109,9 +105,9 @@ impl GContext {
     }
 
     /// Intern a node, returning its pointer-like reference.
-    pub fn insert(&mut self, node: Box<dyn GNode>) -> &mut dyn GNode {
-        self.nodes.push(node);
-    }
+    // pub fn insert(&mut self, node: Box<dyn GNode>) -> &mut dyn GNode {
+    //     self.nodes.push(node);
+    // }
 
     // pub fn node(&self, id: NodeId) -> &dyn GNode {
     //     &*self.nodes[id.0 as usize]
@@ -131,13 +127,13 @@ impl GContext {
      *
      */
 
-    fn intern_channel(&self) -> Box<dyn GNode> {}
+    // fn intern_channel(&self) -> Box<dyn GNode> {}
 
     // fn register_capability(&self) {}
 
-    fn base_node(&self) {
-        return GNode::new();
-    }
+    // fn base_node(&self) {
+    //     return GNode::new();
+    // }
     /// State sync on (re)connect. Returns messages to send.
     /// TODO: replay the agreed graph as GExprs (nil → agreed).
     pub fn replay(&self) -> Vec<String> {
